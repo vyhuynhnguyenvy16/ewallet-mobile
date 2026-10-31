@@ -49,6 +49,42 @@ Phu thuoc `flutter_cccd_vn` duoc cap phep LGPL-3.0 hoac commercial license.
 Kiem tra dieu khoan va nghia vu phan phoi cua thu vien truoc khi phat hanh app:
 [giay phep thu vien](https://github.com/datit309/nfc_cccd_vn).
 
+## Ket noi backend
+
+App goi thang tung service theo port rieng (API gateway chua ap route cho moi
+service). Dia chi duoc quan ly o `lib/core/config/api_config.dart`.
+
+| Service | Port | Ghi chu |
+| --- | --- | --- |
+| api-gateway | 8000 | chua dung |
+| auth-service | 8001 | dang nhap qua `POST /api/v1/auth/phone` |
+| user-service | 8002 | |
+| payment-gateway | 8004 | |
+| ocr-service | 8006 | |
+| notification-service | 8007 | |
+| chatbot-service | 8008 | |
+| file-service | 8009 | |
+| ekyc-service | 8012 | quet NFC CCCD |
+
+Host mac dinh: Android Emulator `http://10.0.2.2`, iOS Simulator/desktop/web
+`http://localhost`. May that cung mang LAN voi may chay Docker:
+
+```bash
+flutter run --dart-define=API_HOST=http://192.168.1.10
+```
+
+Doi rieng mot service bang URL day du: `AUTH_BASE_URL`, `USER_BASE_URL`,
+`PAYMENT_BASE_URL`, `OCR_BASE_URL`, `NOTIFICATION_BASE_URL`,
+`CHATBOT_BASE_URL`, `FILE_BASE_URL`, `EKYC_BASE_URL`, `GATEWAY_BASE_URL`, vi du:
+
+```bash
+flutter run --dart-define=AUTH_BASE_URL=http://192.168.1.10:8001
+```
+
+Sau khi Firebase xac thuc OTP, app goi auth-service de lay access/refresh token
+(luu trong bo nho, chua luu ben vung). Neu auth-service chua chay, man hinh
+dang nhap bao loi va co nut **Thu ket noi lai** (khong can nhap lai OTP).
+
 ## Cau hinh Firebase
 
 1. Tao Firebase project va bat **Authentication > Sign-in method > Phone**.

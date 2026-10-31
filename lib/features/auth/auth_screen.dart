@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'auth_provider.dart';
+import 'backend_auth_api.dart';
 import '../dashboard/dashboard_screen.dart';
 import '../nfc/nfc_cccd_screen.dart';
 
@@ -22,6 +23,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _verificationId;
   String? _message;
   bool _isLoading = false;
+
+  /// Số điện thoại cần đăng nhập lại vào backend khi Firebase đã xác thực OTP
+  /// nhưng auth-service chưa gọi được (mã OTP chỉ dùng được một lần).
+  String? _backendRetryPhone;
 
   @override
   void dispose() {
@@ -59,9 +64,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
           onVerificationCompleted: (credential) async {
             final userCredential = await FirebaseAuth.instance
                 .signInWithCredential(credential);
-            await _logAuthTokens(userCredential);
-            if (!mounted) return;
-            _openDashboard();
+            await _finishLogin(userCredential);
           },
           onVerificationFailed: (error) {
             if (!mounted) return;
@@ -89,15 +92,63 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
       final userCredential = await ref
           .read(authServiceProvider)
           .verifyCode(verificationId: verificationId, smsCode: code);
-      await _logAuthTokens(userCredential);
-      if (!mounted) return;
-      _openDashboard();
+      await _finishLogin(userCredential);
     } on FirebaseAuthException catch (error) {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
         _message = _friendlyError(error);
       });
+    }
+  }
+
+  Future<void> _finishLogin(UserCredential userCredential) async {
+    await _logAuthTokens(userCredential);
+    await _signInToBackend(userCredential.user?.phoneNumber);
+  }
+
+  /// Sau khi Firebase xác thực OTP, đăng nhập vào auth-service để lấy
+  /// access/refresh token dùng cho các service khác.
+  Future<void> _signInToBackend(String? phoneNumber) async {
+    if (!mounted) return;
+    if (phoneNumber == null || phoneNumber.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _message = 'Không đọc được số điện thoại từ tài khoản Firebase.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _message = null;
+    });
+    try {
+      final tokens = await ref
+          .read(backendAuthApiProvider)
+          .loginWithPhone(
+            phoneNumber: phoneNumber,
+            fcmToken: await _readFcmToken(),
+          );
+      ref.read(authTokensProvider.notifier).save(tokens);
+      if (!mounted) return;
+      _openDashboard();
+    } on BackendAuthException catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _backendRetryPhone = phoneNumber;
+        _message = error.message;
+      });
+    }
+  }
+
+  Future<String?> _readFcmToken() async {
+    try {
+      return await FirebaseMessaging.instance.getToken();
+    } catch (error) {
+      debugPrint('Unable to read FCM token: $error');
+      return null;
     }
   }
 
@@ -144,6 +195,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final hasCode = _verificationId != null;
+    final retryPhone = _backendRetryPhone;
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -202,13 +254,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                   ElevatedButton(
                     onPressed: _isLoading
                         ? null
+                        : retryPhone != null
+                        ? () => _signInToBackend(retryPhone)
                         : (hasCode ? _verifyCode : _sendCode),
                     child: _isLoading
                         ? const SizedBox.square(
                             dimension: 22,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : Text(hasCode ? 'Xác nhận OTP' : 'Gửi mã OTP'),
+                        : Text(
+                            retryPhone != null
+                                ? 'Thử kết nối lại'
+                                : hasCode
+                                ? 'Xác nhận OTP'
+                                : 'Gửi mã OTP',
+                          ),
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
@@ -230,7 +290,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       child: TextButton(
                         onPressed: _isLoading
                             ? null
-                            : () => setState(() => _verificationId = null),
+                            : () => setState(() {
+                                _verificationId = null;
+                                _backendRetryPhone = null;
+                                _message = null;
+                              }),
                         child: const Text('Đổi số điện thoại'),
                       ),
                     ),

@@ -3,9 +3,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../core/config/api_config.dart';
 import 'nfc_decoder_request.dart';
-
-const _defaultNfcApiUrl = 'http://10.0.2.2:8012/api/v1/ekyc/nfc';
 
 class NfcDecoderApiException implements Exception {
   const NfcDecoderApiException(this.statusCode);
@@ -20,14 +19,7 @@ class NfcDecoderApi {
   NfcDecoderApi({http.Client? client, Uri? endpoint})
     : _client = client ?? http.Client(),
       _ownsClient = client == null,
-      _endpoint =
-          endpoint ??
-          Uri.parse(
-            const String.fromEnvironment(
-              'NFC_API_URL',
-              defaultValue: _defaultNfcApiUrl,
-            ),
-          );
+      _endpoint = endpoint ?? Uri.parse(ApiConfig.nfcDecoderUrl);
 
   final http.Client _client;
   final bool _ownsClient;
